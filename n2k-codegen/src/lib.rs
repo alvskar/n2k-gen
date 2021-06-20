@@ -17,12 +17,25 @@ mod keywords;
 
 use canboatxml::*;
 
+#[derive(Clone)]
 pub struct N2kCodeGenOpts {
     pub pgns_xml: String,
     pub pgns: HashSet<u32>,
     pub output: PathBuf,
     /// Whether to generate a crate, and its name. Generates a module otherwise
     pub generate_crate: Option<String>,
+}
+
+pub fn characteristics_encodegen(opts: N2kCodeGenOpts) {
+    let dest_path = if opts.generate_crate.is_some() {
+        opts.output.join("src")
+    } else {
+        opts.output.to_owned()
+    };
+
+    let can_encoder_snippet_path = dest_path.join("can_encoder_snippet.rs");
+
+    let mut can_encoder_snippet_file = File::create(&can_encoder_snippet_path).unwrap();
 }
 
 pub fn codegen(opts: N2kCodeGenOpts) {

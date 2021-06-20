@@ -29,5 +29,6 @@ pub fn main() {
         generate_crate: opts.crate_name,
     };
 
-    n2k_codegen::codegen(args);
+    n2k_codegen::codegen(args.clone());
+    n2k_codegen::characteristics_encodegen(args);
 }
