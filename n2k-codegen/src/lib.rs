@@ -106,11 +106,13 @@ fn encodegen_snippet(opts: N2kCodeGenOpts, toml_paths: Vec<PathBuf>) -> TokenStr
                 }
             }).collect();
 
+            let pgn_name = pgn_info.pgn_name.clone();
+
             encoding_tokens.push(quote! {
                 Some(#pgn_name_ident(f))
                     if f.#pgn_field_name_ident().is_some() =>
                 {
-                    log::info!("{} {:?}", pgn_info.pgn_name.clone(), f);
+                    log::info!("{} {:?}", #pgn_name, f);
                     cx.resources.#resource_name_ident.lock(|characteristic| {
                         characteristic.set(#message_name_ident {
                             #(#assigns)*

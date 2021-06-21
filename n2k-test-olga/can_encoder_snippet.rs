@@ -3,7 +3,7 @@ fn bloop() {
         Ok(pgn) => {
             match pgn {
                 Some(BatteryStatus(f)) if f.voltage().is_some() => {
-                    log::info!("{} {:?}", pgn_info.pgn_name.clone(), f);
+                    log::info!("{} {:?}", "BatteryStatus", f);
                     cx.resources.boat_status.lock(|characteristic| {
                         characteristic.set(BoatStatus {
                             battery0_voltage: f.voltage().unwrap(),
@@ -14,7 +14,7 @@ fn bloop() {
                     })
                 }
                 Some(BatteryStatus(f)) if f.voltage().is_some() => {
-                    log::info!("{} {:?}", pgn_info.pgn_name.clone(), f);
+                    log::info!("{} {:?}", "BatteryStatus", f);
                     cx.resources.boat_status.lock(|characteristic| {
                         characteristic.set(BoatStatus {
                             battery0_voltage: characteristic.value().unwrap().battery0_voltage,
@@ -25,7 +25,7 @@ fn bloop() {
                     })
                 }
                 Some(Temperature(f)) if f.actual_temperature().is_some() => {
-                    log::info!("{} {:?}", pgn_info.pgn_name.clone(), f);
+                    log::info!("{} {:?}", "Temperature", f);
                     cx.resources.boat_status.lock(|characteristic| {
                         characteristic.set(BoatStatus {
                             battery0_voltage: characteristic.value().unwrap().battery0_voltage,
