@@ -25,10 +25,11 @@ pub fn main() {
     let args = N2kCodeGenOpts {
         pgns_xml: opts.pgns_xml,
         pgns: opts.pgns.iter().cloned().collect(),
-        output: opts.output,
+        output: opts.output.clone(),
         generate_crate: opts.crate_name,
     };
 
     n2k_codegen::codegen(args.clone());
     n2k_codegen::characteristics_encodegen(args);
+    n2k_codegen::rustfmt(opts.output);
 }

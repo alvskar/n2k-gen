@@ -9,8 +9,9 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
 };
-use std::{fs::File, str::FromStr};
+use std::{fs, fs::File, str::FromStr};
 use std::{io::Write, path::PathBuf};
+use std::collections::BTreeMap;
 
 mod canboatxml;
 mod keywords;
@@ -26,6 +27,18 @@ pub struct N2kCodeGenOpts {
     pub generate_crate: Option<String>,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct TomlPgnInfo {
+    pub pgn_name: String,
+    pub field_name: String
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Message {
+    pub message_name: String,
+    pub fields: BTreeMap<String, TomlPgnInfo>,
+}
+
 pub fn characteristics_encodegen(opts: N2kCodeGenOpts) {
     let dest_path = if opts.generate_crate.is_some() {
         opts.output.join("src")
@@ -33,9 +46,101 @@ pub fn characteristics_encodegen(opts: N2kCodeGenOpts) {
         opts.output.to_owned()
     };
 
-    let can_encoder_snippet_path = dest_path.join("can_encoder_snippet.rs");
+    let toml_paths: Vec<PathBuf> = std::fs::read_dir("messages")
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|path| {
+            if path.path().extension()? == "toml" {
+                return Some(path.path());
+            }
 
+            None
+        })
+        .collect();
+
+    let snippet = encodegen_snippet(opts, toml_paths);
+    let can_encoder_snippet_path = dest_path.join("../can_encoder_snippet.rs");
     let mut can_encoder_snippet_file = File::create(&can_encoder_snippet_path).unwrap();
+    std::fs::write(can_encoder_snippet_path, snippet.to_string()).unwrap();
+}
+
+fn encodegen_snippet(opts: N2kCodeGenOpts, toml_paths: Vec<PathBuf>) -> TokenStream {
+    let mut encoding_tokens = Vec::new();
+
+    for toml_path in toml_paths {
+        let fields_str =
+            fs::read_to_string(&toml_path).expect(&format!("Failed to open {:?}", toml_path));
+
+        let message: Message = toml::from_str(&fields_str)
+            .expect(&format!("Failed to convert {:?} to TOML", toml_path));
+
+        let message_name_ident = Ident::new(&message.message_name.clone(), Span::call_site());
+        let resource_name_ident = Ident::new(&message.message_name.clone().to_snake_case(), Span::call_site());
+        let fields = message.fields;
+
+        let mut field_self_assigns: BTreeMap<String, TokenStream> = BTreeMap::new();
+
+        for (message_field_name, _) in fields.iter() {
+            let message_field_name_ident = Ident::new(&message_field_name.clone(), Span::call_site());
+            field_self_assigns.insert(message_field_name.clone(),
+                quote! {
+                    #message_field_name_ident: characteristic.value().unwrap().#message_field_name_ident,
+                },
+            );
+        }
+
+        log::info!("message {:?}\n", fields);
+
+        for (message_field_name, pgn_info) in fields {
+            let message_field_name_ident = Ident::new(&message_field_name.clone(), Span::call_site());
+            let pgn_name_ident = Ident::new(&pgn_info.pgn_name.clone(), Span::call_site());
+            let pgn_field_name_ident = Ident::new(&pgn_info.field_name.clone(), Span::call_site());
+
+            let assigns: Vec<TokenStream> = field_self_assigns.iter().map(|(key, assign)| {
+                if key != &message_field_name {
+                    assign.clone()
+                } else {
+                    quote! {
+                        #message_field_name_ident: f.#pgn_field_name_ident().unwrap(),
+                    }
+                }
+            }).collect();
+
+            encoding_tokens.push(quote! {
+                Some(#pgn_name_ident(f))
+                    if f.#pgn_field_name_ident().is_some() =>
+                {
+                    log::info!("{} {:?}", pgn_info.pgn_name.clone(), f);
+                    cx.resources.#resource_name_ident.lock(|characteristic| {
+                        characteristic.set(#message_name_ident {
+                            #(#assigns)*
+                        });
+                        publish_all::spawn().unwrap();
+                    })
+                },
+            });
+        }
+    }
+
+    quote! {
+        fn bloop() {
+            match result {
+                Ok(pgn) => {
+                    match pgn {
+                        #(#encoding_tokens)*
+
+                        Some(pgn) => log::warn!("Unknown PGN: {:?}", pgn),
+                        None => {
+                            log::warn!("No PGN supplied from CAN.");
+                        }
+                    };
+                },
+                Err(err) => {
+                    error!("Error when parsing PGN from CAN: {:?}", err);
+                }
+            };
+        }
+    }
 }
 
 pub fn codegen(opts: N2kCodeGenOpts) {
@@ -115,15 +220,6 @@ pub fn codegen(opts: N2kCodeGenOpts) {
         .filter(|info| opts.pgns.contains(&info.pgn))
         .for_each(|info| codegen_pgn(&mut lib_file, &mut gen_lib_file, &dest_path, info));
 
-    log::info!("Running rustfmt...");
-    let rust_files: Vec<_> = glob::glob(&format!("{}/**/*.rs", opts.output.display()))
-        .unwrap()
-        .filter_map(|v| v.ok())
-        .collect();
-    let _ = std::process::Command::new("rustfmt")
-        .args(&rust_files)
-        .status()
-        .unwrap();
     if opts.generate_crate.is_some() {
         log::info!("Running cargo check...");
         let _ = std::process::Command::new("cargo")
@@ -132,6 +228,18 @@ pub fn codegen(opts: N2kCodeGenOpts) {
             .status()
             .unwrap();
     }
+}
+
+pub fn rustfmt(output: PathBuf) {
+    log::info!("Running rustfmt...");
+    let rust_files: Vec<_> = glob::glob(&format!("{}/**/*.rs", output.display()))
+        .unwrap()
+        .filter_map(|v| v.ok())
+        .collect();
+    let _ = std::process::Command::new("rustfmt")
+        .args(&rust_files)
+        .status()
+        .unwrap();
 }
 
 /// Generate an implementation of the PgnRegistry trait to be used by the n2k embedded_hal_can library

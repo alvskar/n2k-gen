@@ -1,0 +1,14 @@
+message_name = "BoatStatus"
+
+[fields]
+    [fields.battery0_voltage]
+    pgn_name = "BatteryStatus"
+    field_name = "voltage"
+
+    [fields.battery1_voltage]
+    pgn_name = "BatteryStatus"
+    field_name = "voltage"
+
+    [fields.temperature]
+    pgn_name = "Temperature"
+    field_name = "actual_temperature"
